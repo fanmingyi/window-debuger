@@ -5,7 +5,9 @@ option casemap:none
 
 include MyDebugger.Inc
  
-
+public g_bIsSystemCC
+public g_bBpDataToReset
+public g_bIsStepCommand
 .data
 	g_hProcess dd 0
 	g_hThread dd 0
@@ -27,17 +29,22 @@ include MyDebugger.Inc
 	
 	
 	
-	g_bIsSystemCC dd FALSE
+
 	
 	g_szDebugFmt db "Excetion addr：%08X",0dh,0ah,0 
 	g_szDebug2Fmt db "EXCEPTION_SINGLE_STEP addr：%08X",0dh,0ah,0 
 	
-	g_bBpDataToReset dd NULL
+	
 	
 	
 	g_szmytest db "是我的断点地址 addr：%08X",0dh,0ah,0 
 	g_szmytest2 db "单步断点地址 addr：%08X",0dh,0ah,0 
-	g_szmytest3 db "单步 X",0dh,0ah,0 
+	g_szmytest3 db "Exception code %x",0dh,0ah,0 
+	
+	
+	g_bIsSystemCC dd FALSE ;系统断点标志位
+	g_bBpDataToReset dd NULL ;断步配合，重设断点
+	g_bIsStepCommand	dd FALSE ;是否有单步命令
 .code
 
 
@@ -75,17 +82,27 @@ OnBreakPoint proc uses esi edi pER:ptr EXCEPTION_RECORD
 	
 	assume edi:ptr Node
 	.while edi !=NULL
-		mov eax,[edi].m_pUserData
+		mov ebx,[edi].m_pUserData
 		
-		assume eax:ptr BpData
+		assume ebx:ptr BpData
 		
-		mov ebx,[esi].ExceptionAddress
+		mov eax,[esi].ExceptionAddress
 			
-		.if [eax].m_dwAddr==ebx
+		.if [ebx].m_dwAddr==eax
 			
 			;是自己的断点，恢复断点，设置单步
-			mov g_bBpDataToReset,eax
-			invoke ResCodeAndSetSingStep,eax
+			mov g_bBpDataToReset,ebx
+			invoke ResCode,ebx
+		
+		
+			
+			;.if [ebx].m_bIsTmp == TRUE
+				;临时断点
+			;	invoke SetTFDecEip,FALSE,1
+			;	invoke DelBreakPoint,[ebx].m_dwNumber
+			;.else
+			;	invoke SetTFDecEip,TRUE,1
+			;.endif
 			
 			;输入新的命令
 			invoke ParseCommand
@@ -95,7 +112,7 @@ OnBreakPoint proc uses esi edi pER:ptr EXCEPTION_RECORD
 				
 		.endif
 		
-		assume eax:nothing
+		assume ebx:nothing
 		
 		mov edi,[edi].m_pNext
 		
@@ -124,21 +141,25 @@ OnSingleStep proc pER:ptr EXCEPTION_RECORD
 
 	;处理调试事件
 	mov @dwStatus,DBG_CONTINUE
-	IFDEF MyDebugger
+	
 	.if g_bBpDataToReset !=NULL
-		invoke crt_printf,offset g_szmytest3
 		mov esi,g_bBpDataToReset
 		assume esi:ptr BpData
 		mov @btCodeCC,0cch
 		invoke crt_printf,offset g_szmytest2,[esi].m_dwAddr
-		;invoke WriteMemory,[esi].m_dwAddr,@btCodeCC,type @btCodeCC
+		invoke WriteMemory,[esi].m_dwAddr,addr @btCodeCC,type @btCodeCC
 		
 		mov g_bBpDataToReset,NULL
-		;assume esi:nothing
+		assume esi:nothing
 	.endif
-	echo ----------执行单步还原---------
 	
-	ENDIF
+	;有单步命令
+	.if g_bIsStepCommand==TRUE
+		mov g_bIsStepCommand, FALSE
+		invoke ParseCommand
+		mov @dwStatus ,eax
+	.endif
+	
 	
 	
 	
@@ -157,6 +178,7 @@ OnException proc uses esi pDe:ptr DEBUG_EVENT
 	
 	;处理调试事件
 	mov @dwStatus,DBG_CONTINUE
+	
 	mov esi,pDe
 	assume esi:ptr DEBUG_EVENT
 	
@@ -166,7 +188,7 @@ OnException proc uses esi pDe:ptr DEBUG_EVENT
 	assume esi:ptr EXCEPTION_RECORD 
 	
 
-	
+	invoke crt_printf,offset g_szmytest3,[esi].ExceptionCode
 	.if [esi].ExceptionCode==EXCEPTION_BREAKPOINT
 		invoke crt_printf,offset g_szDebugFmt,[esi].ExceptionAddress
 		invoke OnBreakPoint,esi
@@ -175,6 +197,9 @@ OnException proc uses esi pDe:ptr DEBUG_EVENT
 		invoke crt_printf,offset g_szDebug2Fmt,[esi].ExceptionAddress
 		invoke OnSingleStep,esi
 		ret
+	.else
+		
+	
 	.endif 
 	
 	

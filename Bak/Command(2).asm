@@ -9,7 +9,93 @@ include MyDebugger.Inc
 	g_szErrCmd db "错误的命令",0dh,0ah,0 
 	g_sztesttt db "调用删除%d",0dh,0ah,0 
 
+	g_arrCode db 32 dup(0)
+ 	g_dwCodeLen dd $-offset g_arrCode
+	g_aryDisAsm db 256 dup(0)
+	g_aryHex db 256 dup (0)
+	g_dwDisCodeLen dd 0
+	g_dwEip dd 00401000h
+	g_szShowDisasmFmt db "%08X %- 16s %s",0dh,0ah,0
+	
+	g_dwEndAddr dd 010124e1h
+	g_bIsAutoStep dd FALSE
+	
 .code
+
+ShowDisAsm proc
+	LOCAL @ctx:CONTEXT
+	
+	
+	;TF置位
+	invoke RtlZeroMemory,addr @ctx,type @ctx
+	mov @ctx.ContextFlags,CONTEXT_ALL
+	invoke GetThreadContext,g_hThread,addr @ctx
+	push @ctx.regEip
+	pop g_dwEip
+	
+	
+	
+	;读取eip位置的机器码
+	invoke ReadMemory,g_dwEip,offset g_arrCode,g_dwCodeLen
+	
+	;返汇编
+	invoke DisAsm,offset g_arrCode, g_dwCodeLen,g_dwEip,offset g_aryDisAsm,offset g_aryHex,offset g_dwDisCodeLen
+	
+	
+	invoke crt_printf,offset g_szShowDisasmFmt,g_dwEip,offset g_aryHex,offset g_aryDisAsm
+
+	
+	ret
+	
+	;or @ctx.regFlag,100h
+	;dec @ctx.regEip
+	;invoke SetThreadContext,g_hThread,addr @ctx
+	ret
+
+ShowDisAsm endp
+
+
+
+ExcuteTCmd proc
+	LOCAL @ctx:CONTEXT
+
+	
+	;TF置位
+	invoke RtlZeroMemory,addr @ctx,type @ctx
+	mov @ctx.ContextFlags,CONTEXT_ALL
+	invoke GetThreadContext,g_hThread,addr @ctx
+	or @ctx.regFlag,100h
+
+	invoke SetThreadContext,g_hThread,addr @ctx
+	
+	;设置标志
+	mov g_bIsStepCommand, TRUE
+	
+	ret
+
+ExcuteTCmd endp
+
+
+ExcutePCmd proc uses esi
+	LOCAL @ctx:CONTEXT
+	
+	mov esi,offset g_aryDisAsm
+	;判断是否位call指令
+	.if byte ptr[esi]=='c' &&  byte ptr[esi+1]=='a' &&  byte ptr[esi+2]=='l' &&  byte ptr[esi+3]=='l'
+		
+		;call 指令 在下一行设置临时断点
+		mov eax,g_dwEip
+		add eax,g_dwDisCodeLen
+		invoke SetBreakPoint,eax,TRUE
+	.elseif
+		;非call指令与
+		invoke	ExcuteTCmd	
+	.endif
+	
+	ret
+
+ExcutePCmd endp
+
 
 
 SkipWhiteChart proc uses edi pCommand:dword ;跳过空白字符
@@ -31,8 +117,19 @@ ParseCommand proc uses esi
 	LOCAL @pCmd:DWORD
 	LOCAL @pEnd:DWORD
 	
+	
+	invoke ShowDisAsm
 	mov @dwStatus,DBG_CONTINUE
 	
+	;
+	.if g_bIsAutoStep ==TRUE && g_dwEip != 010124e1h
+		mov g_bIsAutoStep,TRUE
+		invoke ExcutePCmd
+		mov eax,DBG_CONTINUE
+		ret 
+	.else
+		mov g_bIsAutoStep,FALSE	
+	.endif
 
 	;解析
 	.while TRUE
@@ -60,8 +157,6 @@ ParseCommand proc uses esi
 				invoke ListBreakPoint
 			
 			
-			
-			
 			.elseif byte ptr[esi]=='c'
 			
 				
@@ -85,7 +180,7 @@ ParseCommand proc uses esi
 			
 				
 				
-				invoke crt_printf,offset g_sztesttt,eax
+				;invoke crt_printf,offset g_sztesttt,eax
 				
 				;删除断点
 				invoke DelBreakPoint,eax
@@ -128,7 +223,20 @@ ParseCommand proc uses esi
 		
 		
 		.elseif byte ptr[esi]=='t'
-		
+			invoke ExcuteTCmd
+			mov eax,DBG_CONTINUE
+			ret
+		.elseif byte ptr[esi]=='p'
+			invoke ExcutePCmd
+			mov eax,DBG_CONTINUE
+			ret
+		.elseif byte ptr [esi]=='T'
+			;自单步
+			mov g_bIsAutoStep,TRUE
+			invoke ExcutePCmd
+			mov eax,DBG_CONTINUE
+			mov g_bIsAutoStep,true
+			ret	
 		.else
 			invoke crt_printf,offset g_szErrCmd
 			

@@ -11,14 +11,14 @@ MyDebugger equ <1>
 	includelib msvcrt.lib
 	includelib user32.lib
 	includelib kernel32.lib
-	
+	includelib libudis86.lib
 	;---------------------------
 	;全局变量
 	;---------------------------
-	extern g_hProcess db
-	extern g_hThread dd
-	
-	
+	externdef g_hProcess:dword
+	externdef g_hThread:dword
+	externdef g_pBpListHead:dword
+	externdef g_bIsStepCommand:dword
 	
 	
 	
@@ -27,6 +27,7 @@ MyDebugger equ <1>
 	;---------------------------
 	ReadMemory proto  dwAddr:DWORD,pBuf:LPVOID,dwSize:DWORD
 	WriteMemory proto dwAddr:DWORD,pBuf:LPVOID,dwSize:DWORD
+	DisAsm proto stdcall pMachineCode:LPBYTE,dwCOdeSize:DWORD,dwEip:DWORD,pDisAsm:LPSTR,pCodeHex:LPSTR,pdwCodeLen:LPWORD
 	
 	
 	
@@ -48,6 +49,8 @@ MyDebugger equ <1>
 	SetBreakPoint proto pAddr:DWORD,bIsTemp:DWORD
 	DelBreakPoint proto dwAddr:DWORD
 	ListBreakPoint proto
+	ResCode proto pBpData:ptr BpData
+	SetTFDecEip proto dwCount:DWORD
 
 	
 	ParseCommand proto
