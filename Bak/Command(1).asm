@@ -22,6 +22,9 @@ include MyDebugger.Inc
 	
 .code
 
+
+
+
 ShowDisAsm proc
 	LOCAL @ctx:CONTEXT
 	
@@ -53,6 +56,33 @@ ShowDisAsm proc
 	ret
 
 ShowDisAsm endp
+
+;设置硬件断点
+SetHardwareBp proc dwAddr:DWORD
+	LOCAL @ctx:CONTEXT
+	
+	;TF置位
+	invoke RtlZeroMemory,addr @ctx,type @ctx
+	mov @ctx.ContextFlags,CONTEXT_ALL or CONTEXT_DEBUG_REGISTERS
+	invoke GetThreadContext,g_hThread,addr @ctx
+	
+	;设置硬件断点地址
+	push dwAddr
+	pop @ctx.iDr0
+	
+	
+	;硬件执行断点设置
+	;or @ctx.iDr7,00000011b
+	;and @ctx.iDr7,0fff0ffffh
+	
+	;硬件访问
+	or @ctx.iDr7,00000011b
+	or @ctx.iDr7,000f0000h
+	
+	invoke SetThreadContext,g_hThread,addr @ctx
+	ret
+
+SetHardwareBp endp
 
 
 
@@ -210,7 +240,7 @@ ParseCommand proc uses esi
 			.endif
 			
 			
-			
+	
 			
 			
 		.elseif  byte ptr[esi]=='u'
@@ -235,8 +265,28 @@ ParseCommand proc uses esi
 			mov g_bIsAutoStep,TRUE
 			invoke ExcutePCmd
 			mov eax,DBG_CONTINUE
-			mov g_bIsAutoStep,TRUE
-			ret	
+			ret		
+		.elseif byte ptr [esi]=='b' &&byte ptr [esi+1]=='h';设置硬件断点
+			add @pCmd,2 ;跳过bp字符
+			
+			
+			;设置断点
+			invoke SkipWhiteChart,@pCmd
+			mov @pCmd,eax
+			
+			;解析bp命令地址
+			invoke crt_strtoul,@pCmd,addr @pEnd,16;转16进制
+			mov edx,@pEnd
+			;如果返回0
+			.if eax ==0 || @pCmd ==edx
+				invoke crt_printf,offset g_szErrCmd
+				.continue
+			.endif
+			
+				;设置断点
+			invoke SetHardwareBp,eax	
+			
+			
 		.else
 			invoke crt_printf,offset g_szErrCmd
 			

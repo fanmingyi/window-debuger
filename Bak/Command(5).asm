@@ -16,7 +16,14 @@ include MyDebugger.Inc
 	g_dwDisCodeLen dd 0
 	g_dwEip dd 00401000h
 	g_szShowDisasmFmt db "%08X %- 16s %s",0dh,0ah,0
+	
+	g_dwEndAddr dd 010124e1h
+	g_bIsAutoStep dd FALSE
+	
 .code
+
+
+
 
 ShowDisAsm proc
 	LOCAL @ctx:CONTEXT
@@ -50,6 +57,32 @@ ShowDisAsm proc
 
 ShowDisAsm endp
 
+;设置硬件断点
+SetHardwareBp proc dwAddr:DWORD
+	LOCAL @ctx:CONTEXT
+	
+	;TF置位
+	invoke RtlZeroMemory,addr @ctx,type @ctx
+	mov @ctx.ContextFlags,CONTEXT_ALL or CONTEXT_DEBUG_REGISTERS
+	invoke GetThreadContext,g_hThread,addr @ctx
+	
+	;设置硬件断点地址
+	push dwAddr
+	pop @ctx.iDr0
+	
+	
+	;硬件执行断点设置
+	;or @ctx.iDr7,00000011b
+	;and @ctx.iDr7,0fff0ffffh
+	
+	or @ctx.iDr7,00000011b
+	and @ctx.iDr7,0fff0ffffh
+	
+	invoke SetThreadContext,g_hThread,addr @ctx
+	ret
+
+SetHardwareBp endp
+
 
 
 ExcuteTCmd proc
@@ -72,11 +105,13 @@ ExcuteTCmd proc
 ExcuteTCmd endp
 
 
-ExcutePCmd proc
+ExcutePCmd proc uses esi
 	LOCAL @ctx:CONTEXT
-
+	
+	mov esi,offset g_aryDisAsm
 	;判断是否位call指令
 	.if byte ptr[esi]=='c' &&  byte ptr[esi+1]=='a' &&  byte ptr[esi+2]=='l' &&  byte ptr[esi+3]=='l'
+		
 		;call 指令 在下一行设置临时断点
 		mov eax,g_dwEip
 		add eax,g_dwDisCodeLen
@@ -115,6 +150,15 @@ ParseCommand proc uses esi
 	invoke ShowDisAsm
 	mov @dwStatus,DBG_CONTINUE
 	
+	;
+	.if g_bIsAutoStep ==TRUE && g_dwEip != 010124e1h
+		mov g_bIsAutoStep,TRUE
+		invoke ExcutePCmd
+		mov eax,DBG_CONTINUE
+		ret 
+	.else
+		mov g_bIsAutoStep,FALSE	
+	.endif
 
 	;解析
 	.while TRUE
@@ -195,7 +239,7 @@ ParseCommand proc uses esi
 			.endif
 			
 			
-			
+	
 			
 			
 		.elseif  byte ptr[esi]=='u'
@@ -215,6 +259,33 @@ ParseCommand proc uses esi
 			invoke ExcutePCmd
 			mov eax,DBG_CONTINUE
 			ret
+		.elseif byte ptr [esi]=='T'
+			;自单步
+			mov g_bIsAutoStep,TRUE
+			invoke ExcutePCmd
+			mov eax,DBG_CONTINUE
+			ret		
+		.elseif byte ptr [esi]=='b' &&byte ptr [esi+1]=='h';设置硬件断点
+			add @pCmd,2 ;跳过bp字符
+			
+			
+			;设置断点
+			invoke SkipWhiteChart,@pCmd
+			mov @pCmd,eax
+			
+			;解析bp命令地址
+			invoke crt_strtoul,@pCmd,addr @pEnd,16;转16进制
+			mov edx,@pEnd
+			;如果返回0
+			.if eax ==0 || @pCmd ==edx
+				invoke crt_printf,offset g_szErrCmd
+				.continue
+			.endif
+			
+				;设置断点
+			invoke SetHardwareBp,eax	
+			
+			
 		.else
 			invoke crt_printf,offset g_szErrCmd
 			

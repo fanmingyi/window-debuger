@@ -27,15 +27,12 @@ public g_bIsStepCommand
 	g_szLoadDllFmt db "[event] Lod Dll Base：%08X ImageName:%s",0dh,0ah,0 
 	g_dwLoadDllFmtLen dd $-offset g_szLoadDllFmt
 	
-	
-	
 
 	
 	g_szDebugFmt db "Excetion addr：%08X",0dh,0ah,0 
 	g_szDebug2Fmt db "EXCEPTION_SINGLE_STEP addr：%08X",0dh,0ah,0 
 	
-	
-	
+
 	
 	g_szmytest db "是我的断点地址 addr：%08X",0dh,0ah,0 
 	g_szmytest2 db "单步断点地址 addr：%08X",0dh,0ah,0 
@@ -45,6 +42,7 @@ public g_bIsStepCommand
 	g_bIsSystemCC dd FALSE ;系统断点标志位
 	g_bBpDataToReset dd NULL ;断步配合，重设断点
 	g_bIsStepCommand	dd FALSE ;是否有单步命令
+	g_bIsHardwareBpStep dd FALSE;是否是硬件断点的单步
 .code
 
 
@@ -97,7 +95,7 @@ OnBreakPoint proc uses esi edi pER:ptr EXCEPTION_RECORD
 			;invoke ResCodeAndSetSingStep,ebx
 			
 			.if [ebx].m_bIsTmp == TRUE
-				int 3
+				;int 3
 				;临时断点
 				invoke SetTFDecEip,FALSE,1
 				invoke DelBreakPoint,[ebx].m_dwNumber
@@ -139,6 +137,7 @@ OnSingleStep proc pER:ptr EXCEPTION_RECORD
 	LOCAL @dwBytesWrited:DWORD
 	LOCAL @dwBytesReaded:DWORD
 	LOCAL @dwStatus:DWORD
+	LOCAL @ctx:CONTEXT
 
 	;处理调试事件
 	mov @dwStatus,DBG_CONTINUE
@@ -163,6 +162,44 @@ OnSingleStep proc pER:ptr EXCEPTION_RECORD
 	
 	
 	
+	
+	;判断是否有硬件断点命令
+	invoke RtlZeroMemory,addr @ctx,type @ctx
+	mov @ctx.ContextFlags,CONTEXT_FULL or  CONTEXT_DEBUG_REGISTERS
+	invoke GetThreadContext,g_hThread,addr @ctx
+	
+	
+	;有硬件断点标志，那么还原硬件断点
+	.if g_bIsHardwareBpStep == TRUE
+		or @ctx.iDr7,11b
+		
+		and @ctx.iDr6,0
+		invoke SetThreadContext,g_hThread,addr @ctx
+		mov g_bIsHardwareBpStep,FALSE
+		mov eax,DBG_CONTINUE
+		ret 
+	.endif
+	
+	
+	;
+	.if @ctx.iDr6 & 1
+		;清除Dr0的硬件执行断点
+		;and @ctx.iDr7,0fffffffch
+		;or @ctx.regFlag,100h;设置单步
+		
+		and @ctx.iDr6,0;清空调试寄存器状态
+		invoke SetThreadContext,g_hThread,addr @ctx
+		mov g_bIsHardwareBpStep,TRUE ;为后续还原状态寄存器
+		
+		
+		invoke ParseCommand
+		mov @dwStatus,eax
+	.endif
+	
+	
+	
+	
+
 	
 	mov eax,@dwStatus 
 	ret 
