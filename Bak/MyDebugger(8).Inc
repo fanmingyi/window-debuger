@@ -50,8 +50,9 @@ MyDebugger equ <1>
 	DelBreakPoint proto dwAddr:DWORD
 	ListBreakPoint proto
 	ResCode proto pBpData:ptr BpData
-	SetTFDecEip proto dwCount:DWORD
+	SetTFDecEip proto bTF:BOOL,dwCount:DWORD
 
+	ResCodeAndSetSingStep proto  uses edi bBpData:ptr BpData
 	
 	ParseCommand proto
 

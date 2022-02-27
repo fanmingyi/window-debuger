@@ -19,7 +19,8 @@ MyDebugger equ <1>
 	externdef g_hThread:dword
 	externdef g_pBpListHead:dword
 	externdef g_bIsStepCommand:dword
-	
+	externdef  g_dwMemBpAddr:dword
+	externdef  g_dw0ldProtext:dword
 	
 	
 	;---------------------------

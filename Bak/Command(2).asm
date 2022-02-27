@@ -3,6 +3,9 @@
 option casemap:none
 include MyDebugger.Inc
 
+public  g_dwMemBpAddr
+public  g_dw0ldProtext
+
 .data
 	g_szCmdBuf db MAXBYTE dup(0)
 	
@@ -20,6 +23,8 @@ include MyDebugger.Inc
 	g_dwEndAddr dd 010124e1h
 	g_bIsAutoStep dd FALSE
 	
+	g_dwMemBpAddr dd 0
+	g_dw0ldProtext dd 0
 .code
 
 
@@ -75,7 +80,7 @@ SetHardwareBp proc dwAddr:DWORD
 	;or @ctx.iDr7,00000011b
 	;and @ctx.iDr7,0fff0ffffh
 	
-	;硬件访问
+	;硬件访问设置
 	or @ctx.iDr7,00000011b
 	or @ctx.iDr7,000f0000h
 	
@@ -84,6 +89,21 @@ SetHardwareBp proc dwAddr:DWORD
 
 SetHardwareBp endp
 
+
+;设置内存断点
+SetMemoryBp proc dwAddr:DWORD
+	;存储内存断点地址
+	push dwAddr
+	pop g_dwMemBpAddr
+	
+	
+	;修改内存属性
+	invoke VirtualProtectEx g_hProcess,g_dwMemBpAddr,4,PAGE_NOACCESS
+	
+	
+	ret
+
+SetMemoryBp endp
 
 
 ExcuteTCmd proc
@@ -286,7 +306,25 @@ ParseCommand proc uses esi
 				;设置断点
 			invoke SetHardwareBp,eax	
 			
+		.elseif byte ptr [esi]=='b' &&byte ptr [esi+1]=='m';设置内存断点
+			add @pCmd,2 ;跳过bp字符
 			
+			
+			;设置断点
+			invoke SkipWhiteChart,@pCmd
+			mov @pCmd,eax
+			
+			;解析bp命令地址
+			invoke crt_strtoul,@pCmd,addr @pEnd,16;转16进制
+			mov edx,@pEnd
+			;如果返回0
+			.if eax ==0 || @pCmd ==edx
+				invoke crt_printf,offset g_szErrCmd
+				.continue
+			.endif
+			
+				;设置断点
+			invoke SetMemoryBp,eax		
 		.else
 			invoke crt_printf,offset g_szErrCmd
 			

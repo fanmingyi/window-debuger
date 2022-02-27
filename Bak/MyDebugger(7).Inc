@@ -52,6 +52,7 @@ MyDebugger equ <1>
 	ResCode proto pBpData:ptr BpData
 	SetTFDecEip proto bTF:BOOL,dwCount:DWORD
 
+	ResCodeAndSetSingStep proto  uses esi bBpData:ptr BpData
 	
 	ParseCommand proto
 

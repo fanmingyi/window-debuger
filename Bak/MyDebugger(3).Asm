@@ -43,9 +43,49 @@ public g_bIsStepCommand
 	g_bBpDataToReset dd NULL ;断步配合，重设断点
 	g_bIsStepCommand	dd FALSE ;是否有单步命令
 	g_bIsHardwareBpStep dd FALSE;是否是硬件断点的单步
+	g_bIsMemBpStep		dd FALSE;是否是内存断点	
 .code
 
+OnAccessVoilation proc pER:ptr EXCEPTION_RECORD
+	LOCAL @dwStatus:DWORD
+	LOCAL @ctx: CONTEXT
+	LOCAL @dwOldProtect:dword
+	
+	mov @dwStatus,DBG_CONTINUE
+	
+	mov esi,pER
+	assume esi:ptr EXCEPTION_RECORD
+	
+	
+	
+	
+	;修改内存属性
+	;invoke VirtualProtectEx,g_hProcess,g_dwMemBpAddr,4,g_dw0ldProtext,addr @dwOldProtect
+	
+	invoke SetTFDecEip,TRUE,0
+	mov g_bIsMemBpStep,TRUE
+	
+	lea eax,[esi].ExceptionInformation
+	mov eax,[eax+4];获取异常访问地址
+	
+	mov ebx,g_dwMemBpAddr
+	add ebx,4
+	.if g_dwMemBpAddr <= eax && eax <= ebx
+		invoke ParseCommand
+		mov eax,DBG_CONTINUE
+		ret
+	.endif
+	
+	
+	
+	assume esi:nothing
+	
+		
+	mov eax,@dwStatus
+		
+	ret
 
+OnAccessVoilation endp
 
 OnBreakPoint proc uses esi edi pER:ptr EXCEPTION_RECORD
 	LOCAL @dwStatus:DWORD
@@ -183,13 +223,14 @@ OnSingleStep proc pER:ptr EXCEPTION_RECORD
 	
 	;
 	.if @ctx.iDr6 & 1
-		;清楚Dr0的硬件执行断点
-	
+		;清除Dr0的硬件执行断点
 		;and @ctx.iDr7,0fffffffch
 		;or @ctx.regFlag,100h;设置单步
+		
 		and @ctx.iDr6,0;清空调试寄存器状态
 		invoke SetThreadContext,g_hThread,addr @ctx
-		mov g_bIsHardwareBpStep,TRUE ;为后续还原状态寄存器
+		;硬件执行断点需要在执行后重新开启，硬件访问不需要
+		;mov g_bIsHardwareBpStep,TRUE ;为后续还原状态寄存器
 		
 		
 		invoke ParseCommand
@@ -197,6 +238,13 @@ OnSingleStep proc pER:ptr EXCEPTION_RECORD
 	.endif
 	
 	
+	.if g_bIsMemBpStep==TRUE
+
+		invoke VirtualProtectEx,g_hProcess,g_dwMemBpAddr,4,PAGE_NOACCESS,g_dw0ldProtext
+		mov g_bIsMemBpStep,FALSE
+		
+		
+	.endif
 	
 	
 
@@ -235,6 +283,9 @@ OnException proc uses esi pDe:ptr DEBUG_EVENT
 		invoke crt_printf,offset g_szDebug2Fmt,[esi].ExceptionAddress
 		invoke OnSingleStep,esi
 		ret
+	.elseif [esi].ExceptionCode == EXCEPTION_ACCESS_VIOLATION
+			invoke OnAccessVoilation,esi
+			ret
 	.else
 		
 	

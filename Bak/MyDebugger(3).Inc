@@ -19,7 +19,8 @@ MyDebugger equ <1>
 	externdef g_hThread:dword
 	externdef g_pBpListHead:dword
 	externdef g_bIsStepCommand:dword
-	
+	public  g_dwMemBpAddr
+public  g_dw0ldProtext
 	
 	
 	;---------------------------
@@ -52,7 +53,7 @@ MyDebugger equ <1>
 	ResCode proto pBpData:ptr BpData
 	SetTFDecEip proto bTF:BOOL,dwCount:DWORD
 
-	ResCodeAndSetSingStep proto  uses esi bBpData:ptr BpData
+	ResCodeAndSetSingStep proto   bBpData:ptr BpData
 	
 	ParseCommand proto
 
